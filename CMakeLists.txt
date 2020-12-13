@@ -42,8 +42,8 @@ endif()
 #------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 message("-------------------------------------------------------------------------------------------------------------------------------------")
 set(glew-cmake_BUILD_SHARED ON)
-add_subdirectory(dep/glew)
-include_directories(dep/glew/include)
+add_subdirectory(glew)
+include_directories(glew/include)
 if (GLEW_BUILD_STATIC)
     message("Linking with static GLEW Library (GLEW_BUILD_STATIC:ON)")
     add_definitions (-DGLEW_STATIC)
@@ -54,7 +54,3 @@ endif()
 include_directories(${CMAKE_SOURCE_DIR})
 
 add_subdirectory (src)
-
-add_library(GLAD "src/glad.c")
-set(LIBS ${LIBS} GLAD)
-

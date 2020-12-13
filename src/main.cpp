@@ -1,5 +1,5 @@
-#include <glad/glad.h>
-#include <GLFW/glfw3.h>
+#include "GL/glew.h"
+#include "GLFW/glfw3.h"
 
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
@@ -77,11 +77,18 @@ int main()
     glfwMakeContextCurrent(window);
     glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
 
-    if (!gladLoadGLLoader((GLADloadproc) glfwGetProcAddress))
+    //===============================================================================================================================================================================================================
+    // GLEW library initialization
+    //===============================================================================================================================================================================================================
+    glewExperimental = true;                                                                                                // needed in core profile
+    GLenum result = glewInit();                                                                                             // initialise GLEW
+    if (result != GLEW_OK)
     {
-        std::cout << "Failed to initialize GLAD" << std::endl;
+        glfwTerminate();
+        printf("Failed to initialize GLEW : %s", glewGetErrorString(result));
         return -1;
     }
+    printf("GLEW library initialization done ... ");
 
     unsigned int touchpoints_shader = createShaderProgram(vsTouchpoints, fsTouchpoints);
     glUseProgram(touchpoints_shader);

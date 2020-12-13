@@ -1,0 +1,9 @@
+[submodule "glfw"]
+	path = glfw
+	url = https://github.com/afoksha/glfw.git
+[submodule "glew"]
+	path = glew
+	url = https://github.com/afoksha/glew-cmake.git
+[submodule "glm"]
+	path = glm
+	url = https://github.com/afoksha/glm.git
