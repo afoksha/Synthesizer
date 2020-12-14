@@ -1,3 +1,5 @@
+#include <cstdio>
+
 #include "GL/glew.h"
 #include "GLFW/glfw3.h"
 
@@ -5,31 +7,15 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
-#include <iostream>
+#include "shader.hpp"
 
 #include "pinch_data.hpp"
-#include "touch_points.hpp"
+#include "touch_data.hpp"
 
 void framebuffer_size_callback(GLFWwindow* window, int width, int height);
 
 const unsigned int SCR_WIDTH = 1920;
 const unsigned int SCR_HEIGHT = 1080;
-
-const char* vsTouchpoints = "#version 330 core\n"
-    "layout (location = 0) in vec2 tp_in;\n"
-    "uniform vec2 scale;\n"
-    "void main()\n"
-    "{\n"
-    "   vec2 tp = 2.0 * tp_in * scale - 1.0;\n"
-    "   gl_Position = vec4(tp.x, tp.y, 0.0, 1.0);\n"
-    "}\0";
-
-const char* fsTouchpoints = "#version 330 core\n"
-    "out vec4 FragColor;\n"
-    "void main()\n"
-    "{\n"
-    "   FragColor = vec4(1.0f, 0.5f, 0.2f, 1.0f);\n"
-    "}\n\0";
 
 // #define touchpoints continental_touchpoints
 // #define touchpoints_count continental_touchpoints_count
@@ -41,22 +27,94 @@ const char* fsTouchpoints = "#version 330 core\n"
 #define pinch_data lg_pinch_data
 #define pinch_data_count lg_pinch_data_count
 
-unsigned int createShaderProgram(const char* vsSource, const char* fsSource)
+struct lines_t
 {
-    unsigned int vs_id = glCreateShader(GL_VERTEX_SHADER);
-    unsigned int fs_id = glCreateShader(GL_FRAGMENT_SHADER);
-    unsigned int program_id = glCreateProgram();
+    int N;
+    GLuint vao_id;
+    GLuint vbo_id;
+    glm::vec4 color;
 
-    glShaderSource(vs_id, 1, &vsSource, NULL);
-    glCompileShader(vs_id);
-    glShaderSource(fs_id, 1, &fsSource, NULL);
-    glCompileShader(fs_id);
+    lines_t() {}
 
-    glAttachShader(program_id, vs_id);
-    glAttachShader(program_id, fs_id);
-    glLinkProgram(program_id);
+    lines_t(GLuint vao_id, GLuint vbo_id, glm::vec4 color)
+        : vao_id(vao_id), vbo_id(vbo_id), color(color) {}
 
-    return program_id;
+    lines_t& operator = (const lines_t& other)
+    {
+        N = other.N;
+        vao_id = other.vao_id;
+        vbo_id = other.vbo_id;
+        color = other.color;
+        return *this;
+    }
+
+    void render()
+    {
+        glBindVertexArray(vao_id);
+        glDrawArrays(GL_LINES, 0, 2 * N);
+    }
+
+};
+
+
+lines_t generate_pinch_lines(const pinch_data_t* pinch_data, int N, const glm::vec4& color)
+{
+    lines_t pinch_lines;
+
+    pinch_lines.N = N;
+    pinch_lines.color = color;
+
+    glGenVertexArrays(1, &pinch_lines.vao_id);
+    glGenBuffers(1, &pinch_lines.vbo_id);
+
+    unsigned int buffer_size = 2 * N * sizeof(glm::vec2);
+
+    glBindVertexArray(pinch_lines.vao_id);
+    glBindBuffer(GL_ARRAY_BUFFER, pinch_lines.vbo_id);
+    glBufferData(GL_ARRAY_BUFFER, buffer_size, 0,  GL_STATIC_DRAW);
+
+    glm::vec2* buffer_data = (glm::vec2*) glMapBuffer(GL_ARRAY_BUFFER, GL_WRITE_ONLY);
+
+    for (int i = 0; i < N; ++i)
+    {
+        *(buffer_data++) = pinch_data[i].point0;
+        *(buffer_data++) = pinch_data[i].point1;
+    }
+
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, 0);
+
+    return pinch_lines;
+}
+
+lines_t generate_touch_lines(const glm::vec2* touch_data, int N, const glm::vec4& color)
+{
+    lines_t touch_lines;
+
+    touch_lines.N = N;
+    touch_lines.color = color;
+
+    glGenVertexArrays(1, &touch_lines.vao_id);
+    glGenBuffers(1, &touch_lines.vbo_id);
+
+    unsigned int buffer_size = 2 * N * sizeof(glm::vec2);
+
+    glBindVertexArray(touch_lines.vao_id);
+    glBindBuffer(GL_ARRAY_BUFFER, touch_lines.vbo_id);
+    glBufferData(GL_ARRAY_BUFFER, buffer_size, 0,  GL_STATIC_DRAW);
+
+    glm::vec2* buffer_data = (glm::vec2*) glMapBuffer(GL_ARRAY_BUFFER, GL_WRITE_ONLY);
+
+    for (int i = 0; i < N; ++i)
+    {
+        *(buffer_data++) = touch_data[2 * i + 0];
+        *(buffer_data++) = touch_data[2 * i + 1];
+    }
+
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, 0);
+
+    return touch_lines;
 }
 
 int main()
@@ -70,7 +128,7 @@ int main()
     GLFWwindow* window = glfwCreateWindow(SCR_WIDTH, SCR_HEIGHT, "LearnOpenGL", NULL, NULL);
     if (window == NULL)
     {
-        std::cout << "Failed to create GLFW window" << std::endl;
+        printf("Failed to create GLFW window.\n");
         glfwTerminate();
         return -1;
     }
@@ -90,39 +148,53 @@ int main()
     }
     printf("GLEW library initialization done ... ");
 
-    unsigned int touchpoints_shader = createShaderProgram(vsTouchpoints, fsTouchpoints);
-    glUseProgram(touchpoints_shader);
+    glsl_program_t touchpoints_shader(glsl_shader_t(GL_VERTEX_SHADER,   "glsl/touch.vs"),
+                                      glsl_shader_t(GL_FRAGMENT_SHADER, "glsl/touch.fs"));
+    touchpoints_shader.enable();
+    uniform_t uni_ts_scale = touchpoints_shader["scale"];
+    uniform_t uni_ts_color = touchpoints_shader["color"];
 
-    glm::vec2 scale = glm::vec2(1.0f / 1888, 1.0f / 1728);
-    int scaleLocation = glGetUniformLocation(touchpoints_shader, "scale");
-    glUniform2fv(scaleLocation, 1, glm::value_ptr(scale));
+    glm::vec2 lg_scale = glm::vec2(1.0f / 1888, 1.0f / 1728);
+    glm::vec2 continental_scale = glm::vec2(1.0f / 1624, 1.0f / 1728);
 
-    // ===================================================================================================================================================
-    unsigned int vao_id, vbo_id;
-    glGenVertexArrays(1, &vao_id); // we can also generate multiple VAOs or buffers at the same time
-    glGenBuffers(1, &vbo_id);
+    lines_t lg_touch_lines = generate_touch_lines(lg_touchpoints, lg_touchpoints_pair_count, glm::vec4(1.0f, 1.0f, 0.0f, 0.5f));
+    lines_t lg_pinch_lines = generate_pinch_lines(lg_pinch_data, lg_pinch_data_count, glm::vec4(1.0f, 0.0f, 0.0f, 0.5f));
 
-    glBindVertexArray(vao_id);
-    glBindBuffer(GL_ARRAY_BUFFER, vbo_id);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(touchpoints), glm::value_ptr(touchpoints[0]), GL_STATIC_DRAW);
-    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, 0);
-    glEnableVertexAttribArray(0);
+    lines_t continental_touch_lines = generate_touch_lines(continental_touchpoints, continental_touchpoints_pair_count, glm::vec4(0.0f, 1.0f, 0.0f, 0.5f));
+    lines_t continental_pinch_lines = generate_pinch_lines(continental_pinch_data, continental_pinch_data_count, glm::vec4(0.0f, 0.0f, 1.0f, 0.5f));
 
     glEnable(GL_LINE_SMOOTH);
     glLineWidth(2.0f);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
     while (!glfwWindowShouldClose(window))
     {
         glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT);
-        glDrawArrays(GL_LINES, 0, touchpoints_count);
 
+        /* render LG data */
+        uni_ts_scale = lg_scale;
+
+        uni_ts_color = lg_touch_lines.color;
+        lg_touch_lines.render();
+
+        uni_ts_color = lg_pinch_lines.color;
+        lg_pinch_lines.render();
+
+//        /* render continental data */
+//        uni_ts_scale = continental_scale;
+//
+//        uni_ts_color = continental_touch_lines.color;
+//        continental_touch_lines.render();
+//
+//        uni_ts_color = continental_pinch_lines.color;
+//        continental_pinch_lines.render();
+//
         glfwSwapBuffers(window);
         glfwPollEvents();
     }
 
-    glDeleteVertexArrays(1, &vao_id);
-    glDeleteBuffers(1, &vbo_id);
     glDeleteProgram(touchpoints_shader);
     glfwTerminate();
     return 0;

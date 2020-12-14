@@ -307,7 +307,7 @@ glm::vec2 lg_touchpoints[] =
     glm::vec2(  85.0f, 764.0f), glm::vec2(  87.0f, 267.0f)
 };
 
-const int lg_touchpoints_count = sizeof(lg_touchpoints) / sizeof(glm::vec2);
+const unsigned int lg_touchpoints_pair_count = sizeof(lg_touchpoints) / (2 * sizeof(glm::vec2));
 
 glm::vec2 continental_touchpoints[] =
 {
@@ -428,4 +428,4 @@ glm::vec2 continental_touchpoints[] =
     glm::vec2(  92.943, 316.817), glm::vec2( 204.874, 823.523)
 };
 
-const int continental_touchpoints_count = sizeof(continental_touchpoints) / sizeof(glm::vec2);
+const unsigned int continental_touchpoints_pair_count = sizeof(continental_touchpoints) / (2 * sizeof(glm::vec2));
