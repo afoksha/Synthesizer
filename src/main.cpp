@@ -7,12 +7,41 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
+#include "imgui_window.hpp"
 #include "shader.hpp"
+#include "gl_aux.hpp"
+#include "log.hpp"
 
 #include "pinch_data.hpp"
 #include "touch_data.hpp"
 
-void framebuffer_size_callback(GLFWwindow* window, int width, int height);
+struct demo_window_t : public imgui_window_t
+{
+    demo_window_t(const char* title, int glfw_samples, int version_major, int version_minor, int res_x, int res_y, bool fullscreen = true)
+        : imgui_window_t(title, glfw_samples, version_major, version_minor, res_x, res_y, fullscreen, true /*, true */)
+    {
+        gl_aux::dump_info(OPENGL_BASIC_INFO | OPENGL_EXTENSIONS_INFO);
+    }
+
+    //===================================================================================================================================================================================================================
+    // event handlers
+    //===================================================================================================================================================================================================================
+    void on_key(int key, int scancode, int action, int mods) override
+    {
+    }
+
+    void on_mouse_move() override
+    {
+    }
+
+    void update_ui() override
+    {
+        /* shaders settings window */
+        ImGui::SetNextWindowSize(ImVec2(512, 256), ImGuiCond_FirstUseEver);
+        ImGui::Begin("Data deviation", 0);
+        ImGui::End();
+    }
+};
 
 struct lines_t
 {
@@ -68,6 +97,7 @@ lines_t generate_pinch_lines(const pinch_data_t* pinch_data, int N, const glm::v
         *(buffer_data++) = pinch_data[i].point1;
     }
 
+    glUnmapBuffer(GL_ARRAY_BUFFER);
     glEnableVertexAttribArray(0);
     glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, 0);
 
@@ -98,6 +128,7 @@ lines_t generate_touch_lines(const glm::vec2* touch_data, int N, const glm::vec4
         *(buffer_data++) = touch_data[2 * i + 1];
     }
 
+    glUnmapBuffer(GL_ARRAY_BUFFER);
     glEnableVertexAttribArray(0);
     glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, 0);
 
@@ -106,38 +137,21 @@ lines_t generate_touch_lines(const glm::vec2* touch_data, int N, const glm::vec4
 
 int main()
 {
-    glfwInit();
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
-    glfwWindowHint(GLFW_SAMPLES, 4);
-    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+    //===================================================================================================================================================================================================================
+    // initialize GLFW library
+    // create GLFW window and initialize GLEW library
+    // 8AA samples, OpenGL 3.3 context, screen resolution : 1920 x 1080, fullscreen
+    //===================================================================================================================================================================================================================
+    if (!glfw::init())
+        exit_msg("Failed to initialize GLFW library. Exiting ...");
 
-    const unsigned int res_x = 1920;
-    const unsigned int res_y = 1080;
-    bool fullscreen = true;
-    GLFWwindow* window = glfwCreateWindow(res_x, res_y, "Touch Data Visualization", fullscreen ? glfwGetPrimaryMonitor() : 0, 0);
-    if (window == NULL)
-    {
-        printf("Failed to create GLFW window.\n");
-        glfwTerminate();
-        return -1;
-    }
-    glfwMakeContextCurrent(window);
-    glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
+    const int res_x = 1920;
+    const int res_y = 1080;
+    demo_window_t window("PBR Lighting + Bloom Effect Shader", 4, 3, 3, res_x, res_y, true);
 
-    //===============================================================================================================================================================================================================
-    // GLEW library initialization
-    //===============================================================================================================================================================================================================
-    glewExperimental = true;                                                                                                // needed in core profile
-    GLenum result = glewInit();                                                                                             // initialise GLEW
-    if (result != GLEW_OK)
-    {
-        glfwTerminate();
-        printf("Failed to initialize GLEW : %s", glewGetErrorString(result));
-        return -1;
-    }
-    printf("GLEW library initialization done ... ");
-
+    //===================================================================================================================================================================================================================
+    // program begin
+    //===================================================================================================================================================================================================================
     glsl_program_t touchpoints_shader(glsl_shader_t(GL_VERTEX_SHADER,   "glsl/touch.vs"),
                                       glsl_shader_t(GL_FRAGMENT_SHADER, "glsl/touch.fs"));
     touchpoints_shader.enable();
@@ -157,14 +171,21 @@ int main()
     lines_t continental_pinch_lines = generate_pinch_lines(continental_pinch_data, continental_pinch_data_count, glm::vec4(0.0f, 0.0f, 1.0f, 0.5f));
 
     glEnable(GL_LINE_SMOOTH);
-    glLineWidth(2.0f);
+    glLineWidth(1.0f);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-    while (!glfwWindowShouldClose(window))
+    //===================================================================================================================================================================================================================
+    // main loop begin
+    //===================================================================================================================================================================================================================
+    while (!window.should_close())
     {
+        window.new_frame();
+
         glClearColor(0.09f, 0.01f, 0.04f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT);
+
+        touchpoints_shader.enable();
 
 //        /* render LG data */
 //        uni_ts_scale = lg_scale;
@@ -178,8 +199,8 @@ int main()
         /* render LG no compression data */
         uni_ts_scale = lg_scale;
 
-//        uni_ts_color = lg_nctch_lines.color;
-//        lg_nctch_lines.render();
+        uni_ts_color = lg_nctch_lines.color;
+        lg_nctch_lines.render();
 
         uni_ts_color = lg_ncpch_lines.color;
         lg_ncpch_lines.render();
@@ -193,16 +214,23 @@ int main()
 //        uni_ts_color = continental_pinch_lines.color;
 //        continental_pinch_lines.render();
 
-        glfwSwapBuffers(window);
-        glfwPollEvents();
+        window.end_frame();
+        //===============================================================================================================================================================================================================
+        // After end_frame call ::
+        //  - GL_DEPTH_TEST is disabled
+        //  - GL_CULL_FACE is disabled
+        //  - GL_SCISSOR_TEST is enabled
+        //  - GL_BLEND is enabled -- blending mode GL_SRC_ALPHA/GL_ONE_MINUS_SRC_ALPHA with blending function GL_FUNC_ADD
+        //  - VAO binding is destroyed
+        //===============================================================================================================================================================================================================
+        glDisable(GL_SCISSOR_TEST);
+        glDisable(GL_BLEND);
     }
 
-    glDeleteProgram(touchpoints_shader);
-    glfwTerminate();
+    //===================================================================================================================================================================================================================
+    // terminate the program and exit
+    //===================================================================================================================================================================================================================
+    glfw::terminate();
     return 0;
 }
 
-void framebuffer_size_callback(GLFWwindow* window, int width, int height)
-{
-    glViewport(0, 0, width, height);
-}
