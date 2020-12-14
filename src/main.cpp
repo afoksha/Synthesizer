@@ -14,19 +14,6 @@
 
 void framebuffer_size_callback(GLFWwindow* window, int width, int height);
 
-const unsigned int SCR_WIDTH = 1920;
-const unsigned int SCR_HEIGHT = 1080;
-
-// #define touchpoints continental_touchpoints
-// #define touchpoints_count continental_touchpoints_count
-// #define pinch_data continental_pinch_data
-// #define pinch_data_count continental_pinch_data_count
-
-#define touchpoints lg_touchpoints
-#define touchpoints_count lg_touchpoints_count
-#define pinch_data lg_pinch_data
-#define pinch_data_count lg_pinch_data_count
-
 struct lines_t
 {
     int N;
@@ -125,7 +112,10 @@ int main()
     glfwWindowHint(GLFW_SAMPLES, 4);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
-    GLFWwindow* window = glfwCreateWindow(SCR_WIDTH, SCR_HEIGHT, "LearnOpenGL", NULL, NULL);
+    const unsigned int res_x = 1920;
+    const unsigned int res_y = 1080;
+    bool fullscreen = true;
+    GLFWwindow* window = glfwCreateWindow(res_x, res_y, "Touch Data Visualization", fullscreen ? glfwGetPrimaryMonitor() : 0, 0);
     if (window == NULL)
     {
         printf("Failed to create GLFW window.\n");
@@ -158,7 +148,10 @@ int main()
     glm::vec2 continental_scale = glm::vec2(1.0f / 1624, 1.0f / 1728);
 
     lines_t lg_touch_lines = generate_touch_lines(lg_touchpoints, lg_touchpoints_pair_count, glm::vec4(1.0f, 1.0f, 0.0f, 0.5f));
+    lines_t lg_nctch_lines = generate_touch_lines(lg_touchpoints_nocomp, lg_touchpoints_nocomp_pair_count, glm::vec4(1.0f, 1.0f, 0.0f, 0.5f));
+
     lines_t lg_pinch_lines = generate_pinch_lines(lg_pinch_data, lg_pinch_data_count, glm::vec4(1.0f, 0.0f, 0.0f, 0.5f));
+    lines_t lg_ncpch_lines = generate_pinch_lines(lg_pinch_data_nocomp, lg_pinch_data_nocomp_count, glm::vec4(1.0f, 0.0f, 0.0f, 0.5f));
 
     lines_t continental_touch_lines = generate_touch_lines(continental_touchpoints, continental_touchpoints_pair_count, glm::vec4(0.0f, 1.0f, 0.0f, 0.5f));
     lines_t continental_pinch_lines = generate_pinch_lines(continental_pinch_data, continental_pinch_data_count, glm::vec4(0.0f, 0.0f, 1.0f, 0.5f));
@@ -170,17 +163,26 @@ int main()
 
     while (!glfwWindowShouldClose(window))
     {
-        glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
+        glClearColor(0.09f, 0.01f, 0.04f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT);
 
-        /* render LG data */
+//        /* render LG data */
+//        uni_ts_scale = lg_scale;
+//
+//        uni_ts_color = lg_touch_lines.color;
+//        lg_touch_lines.render();
+//
+//        uni_ts_color = lg_pinch_lines.color;
+//        lg_pinch_lines.render();
+
+        /* render LG no compression data */
         uni_ts_scale = lg_scale;
 
-        uni_ts_color = lg_touch_lines.color;
-        lg_touch_lines.render();
+//        uni_ts_color = lg_nctch_lines.color;
+//        lg_nctch_lines.render();
 
-        uni_ts_color = lg_pinch_lines.color;
-        lg_pinch_lines.render();
+        uni_ts_color = lg_ncpch_lines.color;
+        lg_ncpch_lines.render();
 
 //        /* render continental data */
 //        uni_ts_scale = continental_scale;
@@ -190,7 +192,7 @@ int main()
 //
 //        uni_ts_color = continental_pinch_lines.color;
 //        continental_pinch_lines.render();
-//
+
         glfwSwapBuffers(window);
         glfwPollEvents();
     }
