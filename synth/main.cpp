@@ -7,10 +7,56 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
-#include "imgui_window.hpp"
-#include "shader.hpp"
-#include "gl_aux.hpp"
-#include "log.hpp"
+#include "gl/imgui_window.hpp"
+#include "gl/shader.hpp"
+#include "gl/gl_aux.hpp"
+#include "gl/log.hpp"
+
+#include <AL/al.h>
+#include <AL/alc.h>
+
+#ifdef LIBAUDIO
+#include <audio/wave.h>
+#define BACKEND "libaudio"
+#else
+#include <AL/alut.h>
+#define BACKEND "alut"
+#endif
+
+static void list_audio_devices(const ALCchar *devices)
+{
+    const ALCchar* device = devices;
+    const ALCchar* next = devices + 1;
+    size_t len = 0;
+
+    fprintf(stdout, "Devices list:\n");
+    fprintf(stdout, "----------\n");
+    while (device && *device != '\0' && next && *next != '\0')
+    {
+        fprintf(stdout, "%s\n", device);
+        len = strlen(device);
+        device += (len + 1);
+        next += (len + 2);
+    }
+    fprintf(stdout, "----------\n");
+}
+
+void alValidate(const char* msg)
+{
+    ALenum error = alGetError();
+    if (error != AL_NO_ERROR)
+    {
+        fprintf(stderr, "%s\n", msg);
+        std::exit(-1);
+    }
+}
+
+static inline ALenum to_al_format(short channels, short samples)
+{
+    return (samples == 16) ? (channels > 1 ? AL_FORMAT_STEREO16 : AL_FORMAT_MONO16) :
+           (samples == 8 ) ? (channels > 1 ? AL_FORMAT_STEREO8  : AL_FORMAT_MONO8 ) :
+           -1;
+}
 
 struct demo_window_t : public imgui_window_t
 {
@@ -94,8 +140,148 @@ struct demo_window_t : public imgui_window_t
     }
 };
 
-int main()
+int play_music(int argc, char **argv)
 {
+    const ALCchar *devices;
+    const ALCchar *defaultDeviceName = argv[1];
+    int ret;
+#ifdef LIBAUDIO
+    WaveInfo *wave;
+#endif
+    char *bufferData;
+    ALCdevice *device;
+    ALvoid *data;
+    ALCcontext *context;
+    ALsizei size, freq;
+    ALenum format;
+    ALuint buffer, source;
+    ALfloat listenerOri[] = { 0.0f, 0.0f, 1.0f, 0.0f, 1.0f, 0.0f };
+    ALboolean loop = AL_FALSE;
+    ALCenum error;
+
+    fprintf(stdout, "Using " BACKEND " as audio backend\n");
+
+    ALboolean enumeration = alcIsExtensionPresent(NULL, "ALC_ENUMERATION_EXT");
+    if (enumeration == AL_FALSE)
+        fprintf(stderr, "enumeration extension not available\n");
+
+    list_audio_devices(alcGetString(NULL, ALC_DEVICE_SPECIFIER));
+
+    if (!defaultDeviceName)
+        defaultDeviceName = alcGetString(NULL, ALC_DEFAULT_DEVICE_SPECIFIER);
+
+    device = alcOpenDevice(defaultDeviceName);
+    if (!device) {
+        fprintf(stderr, "unable to open default device\n");
+        return -1;
+    }
+
+    fprintf(stdout, "Device: %s\n", alcGetString(device, ALC_DEVICE_SPECIFIER));
+
+    alGetError();
+
+    context = alcCreateContext(device, NULL);
+    if (!alcMakeContextCurrent(context)) {
+        fprintf(stderr, "failed to make default context\n");
+        return -1;
+    }
+    alValidate("make default context");
+
+    /* set orientation */
+    alListener3f(AL_POSITION, 0, 0, 1.0f);
+    alValidate("listener position");
+    alListener3f(AL_VELOCITY, 0, 0, 0);
+    alValidate("listener velocity");
+    alListenerfv(AL_ORIENTATION, listenerOri);
+    alValidate("listener orientation");
+
+    alGenSources((ALuint)1, &source);
+    alValidate("source generation");
+
+    alSourcef(source, AL_PITCH, 1);
+    alValidate("source pitch");
+    alSourcef(source, AL_GAIN, 1);
+    alValidate("source gain");
+    alSource3f(source, AL_POSITION, 0, 0, 0);
+    alValidate("source position");
+    alSource3f(source, AL_VELOCITY, 0, 0, 0);
+    alValidate("source velocity");
+    alSourcei(source, AL_LOOPING, AL_FALSE);
+    alValidate("source looping");
+
+    alGenBuffers(1, &buffer);
+    alValidate("buffer generation");
+
+#ifdef LIBAUDIO
+    /* load data */
+    wave = WaveOpenFileForReading("test.wav");
+    if (!wave)
+    {
+        fprintf(stderr, "failed to read wave file\n");
+        return -1;
+    }
+
+    ret = WaveSeekFile(0, wave);
+    if (ret)
+    {
+        fprintf(stderr, "failed to seek wave file\n");
+        return -1;
+    }
+
+    bufferData = malloc(wave->dataSize);
+    if (!bufferData)
+    {
+        perror("malloc");
+        return -1;
+    }
+
+    ret = WaveReadFile(bufferData, wave->dataSize, wave);
+    if (ret != wave->dataSize)
+    {
+        fprintf(stderr, "short read: %d, want: %d\n", ret, wave->dataSize);
+        return -1;
+    }
+
+    alBufferData(buffer, to_al_format(wave->channels, wave->bitsPerSample),
+            bufferData, wave->dataSize, wave->sampleRate);
+    alValidate("failed to load buffer data");
+#else
+    alutLoadWAVFile((ALbyte*) "wav/test.wav", &format, &data, &size, &freq, &loop);
+    alValidate("loading wav file");
+
+    alBufferData(buffer, format, data, size, freq);
+    alValidate("buffer copy");
+#endif
+
+    alSourcei(source, AL_BUFFER, buffer);
+    alValidate("buffer binding");
+
+    alSourcePlay(source);
+    alValidate("source playing");
+
+    ALint source_state = AL_PLAYING;
+
+    while (source_state == AL_PLAYING)
+    {
+        alGetSourcei(source, AL_SOURCE_STATE, &source_state);
+        alValidate("source state get");
+    }
+
+    /* exit context */
+    alDeleteSources(1, &source);
+    alDeleteBuffers(1, &buffer);
+    device = alcGetContextsDevice(context);
+    alcMakeContextCurrent(NULL);
+    alcDestroyContext(context);
+    alcCloseDevice(device);
+
+    return 0;
+}
+
+int main(int argc, char **argv)
+{
+    play_music(argc, argv);
+
     //===================================================================================================================================================================================================================
     // initialize GLFW library
     // create GLFW window and initialize GLEW library

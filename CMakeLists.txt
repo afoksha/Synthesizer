@@ -50,4 +50,5 @@ endif()
 include_directories(${CMAKE_SOURCE_DIR})
 
 add_subdirectory (imgui)
-add_subdirectory (src)
+add_subdirectory (gl)
+add_subdirectory (synth)
