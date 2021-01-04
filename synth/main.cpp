@@ -15,6 +15,8 @@
 #include <AL/al.h>
 #include <AL/alc.h>
 
+#include "audio_file.hpp"
+
 #ifdef LIBAUDIO
 #include <audio/wave.h>
 #define BACKEND "libaudio"
@@ -280,7 +282,7 @@ int play_music(int argc, char **argv)
 
 int main(int argc, char **argv)
 {
-    play_music(argc, argv);
+    //play_music(argc, argv);
 
     //===================================================================================================================================================================================================================
     // initialize GLFW library
@@ -295,8 +297,66 @@ int main(int argc, char **argv)
     demo_window_t window("Synthesizer", 4, 3, 3, res_x, res_y, true);
 
     //===================================================================================================================================================================================================================
-    // program begin
+    // graph rendering shader program
     //===================================================================================================================================================================================================================
+    glsl_program_t graph_program(glsl_shader_t(GL_VERTEX_SHADER,   "glsl/graph.vs"),
+                                 glsl_shader_t(GL_FRAGMENT_SHADER, "glsl/graph.fs"));
+    graph_program.enable();
+    uniform_t uni_scale = graph_program["scale"];
+    uniform_t uni_shift = graph_program["shift"];
+    uniform_t uni_color = graph_program["color"];
+
+    //===================================================================================================================================================================================================================
+    // audio file loading and buffer creation
+    //===================================================================================================================================================================================================================
+    AudioFile<float> audioFile;
+    audioFile.load ("../../notes/piano/Piano.ff.A0.aiff");
+
+    int sampleRate = audioFile.getSampleRate();
+    int bitDepth = audioFile.getBitDepth();
+    int numSamples = audioFile.getNumSamplesPerChannel();
+    double lengthInSeconds = audioFile.getLengthInSeconds();
+
+    int numChannels = audioFile.getNumChannels();
+    bool isMono = audioFile.isMono();
+    bool isStereo = audioFile.isStereo();
+
+    audioFile.printSummary();
+
+    if (numChannels != 2)
+    {
+        printf("Expect 2-channel audio file\n");
+        return -1;
+    }
+
+    GLuint vao_id[2];
+    GLuint vbo_id[2];
+
+    glGenVertexArrays(2, vao_id);
+    glGenBuffers(2, vbo_id);
+
+    for (int channel = 0; channel < 2; ++channel)
+    {
+        glBindVertexArray(vao_id[channel]);
+        glBindBuffer(GL_ARRAY_BUFFER, vbo_id[channel]);
+        glBufferData(GL_ARRAY_BUFFER, audioFile.samples[channel].size() * sizeof(float), audioFile.samples[channel].data(), GL_STATIC_DRAW);
+        glVertexAttribPointer(0, 1, GL_FLOAT, GL_FALSE, 0, 0);
+    }
+
+    glm::vec4 color[2] =
+    {
+        glm::vec4(1.0f, 1.0f, 0.0f, 1.0f),
+        glm::vec4(0.2f, 0.5f, 1.0f, 1.0f)
+    };
+
+    const int max_x = audioFile.samples[0].size();
+    const int margin_x = 64;
+    const int size_x = res_x - 2 * margin_x;
+
+    int begin_x = 0;
+
+    glm::vec2 scale = glm::vec2(2.0f / res_x, 1.0);
+    glm::vec2 shift = glm::vec2(-1.0f + float(margin_x) / res_x, 0.0);
 
     //===================================================================================================================================================================================================================
     // main loop begin
@@ -308,22 +368,31 @@ int main(int argc, char **argv)
         glClearColor(0.09f, 0.01f, 0.04f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT);
 
+        graph_program.enable();
 
+        //begin_x = (begin_x + 10) % max_x;
 
+        for (int channel = 0; channel < 2; ++channel)
+        {
+            uni_scale = scale;
+            uni_shift = shift;
+            uni_color = color[channel];
 
+            glBindVertexArray(vao_id[channel]);
 
+            int end_x = begin_x + size_x;
 
-
-
-
-
-
-
-
-
-
-
-
+            if (end_x < max_x)
+            {
+                glDrawArrays(GL_POINTS, begin_x, size_x);
+            }
+            else
+            {
+                int size = audioFile.samples[channel].size() - begin_x;
+                glDrawArrays(GL_POINTS, begin_x, size);
+                glDrawArrays(GL_POINTS, 0, size_x - size);
+            }
+        }
 
         window.end_frame();
         //===============================================================================================================================================================================================================

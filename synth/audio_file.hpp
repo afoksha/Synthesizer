@@ -365,7 +365,7 @@ template <class T> bool AudioFile<T>::decodeWaveFile (std::vector<uint8_t>& file
     int indexOfXMLChunk = getIndexOfChunk (fileData, "iXML", 12);
 
     /* if we can't find the data or format chunks, or the IDs/formats don't seem to be as expected */
-    /8 then it is unlikely we'll able to read this file, so abort */
+    /* then it is unlikely we'll able to read this file, so abort */
     if (indexOfDataChunk == -1 || indexOfFormatChunk == -1 || headerChunkID != "RIFF" || format != "WAVE")
     {
         reportError ("ERROR: this doesn't seem to be a valid .WAV file");
@@ -384,7 +384,7 @@ template <class T> bool AudioFile<T>::decodeWaveFile (std::vector<uint8_t>& file
 
     uint16_t numBytesPerSample = static_cast<uint16_t> (bitDepth) / 8;
 
-    /* check that the audio format is PCM or Float or extensible */ 
+    /* check that the audio format is PCM or Float or extensible */
     if (audioFormat != WavAudioFormat::PCM && audioFormat != WavAudioFormat::IEEEFloat && audioFormat != WavAudioFormat::Extensible)
     {
         reportError ("ERROR: this .WAV file is encoded in a format that this library does not support at present");
@@ -398,7 +398,7 @@ template <class T> bool AudioFile<T>::decodeWaveFile (std::vector<uint8_t>& file
         return false;
     }
 
-    /* check header data is consistent */ 
+    /* check header data is consistent */
     if (numBytesPerSecond != static_cast<uint32_t> ((numChannels * sampleRate * bitDepth) / 8) || numBytesPerBlock != (numChannels * numBytesPerSample))
     {
         reportError ("ERROR: the header data in this WAV file seems to be inconsistent");
@@ -445,10 +445,10 @@ template <class T> bool AudioFile<T>::decodeWaveFile (std::vector<uint8_t>& file
                 int32_t sampleAsInt = 0;
                 sampleAsInt = (fileData[sampleIndex + 2] << 16) | (fileData[sampleIndex + 1] << 8) | fileData[sampleIndex];
 
-                if (sampleAsInt & 0x800000) 			/* if the 24th bit is set, this is a negative number in 24-bit world */
-                    sampleAsInt = sampleAsInt | ~0xFFFFFF; 	/* so make sure sign is extended to the 32 bit float */
+                if (sampleAsInt & 0x800000)                 /* if the 24th bit is set, this is a negative number in 24-bit world */
+                    sampleAsInt = sampleAsInt | ~0xFFFFFF;  /* so make sure sign is extended to the 32 bit float */
 
-                T sample = (T)sampleAsInt / (T)8388608.;
+                T sample = (T) sampleAsInt / (T) 8388608.0;
                 samples[channel].push_back (sample);
             }
             else if (bitDepth == 32)
@@ -856,7 +856,7 @@ template <class T> bool AudioFile<T>::saveToAiffFile (std::string filePath)
         return false;
     }
 
-    /* try to write the file */  
+    /* try to write the file */
     return writeDataToFile (fileData, filePath);
 }
 
